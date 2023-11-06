@@ -1,6 +1,10 @@
 package com.example.nearbyapp
 
+import adapters.MessageAdapter
 import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ListView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
@@ -15,16 +19,48 @@ import com.google.android.gms.nearby.connection.Payload
 import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
+import models.Message
 
+
+private val STRATEGY = Strategy.P2P_CLUSTER
 
 class MainActivity : AppCompatActivity() {
-    private val STRATEGY = Strategy.P2P_CLUSTER
     private val SERVICE_ID = "com.example.nearbyapp.id"
     private val LOCAL_USERNAME = "final32david"
 
+    private lateinit var messageList: ListView
+    private val messages = mutableListOf<Message>()
+    private val connections = mutableListOf<String>()
+    private lateinit var messageBox: EditText
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        messageList = findViewById(R.id.messageList)
+        messageList.adapter = MessageAdapter(this, messages)
+
+        messageBox = findViewById(R.id.messageBox)
+
+        findViewById<Button>(R.id.sendButton).setOnClickListener {
+            val written = messageBox.text
+                .toString()
+
+            val bytesPayload = Payload.fromBytes(written.toByteArray())
+
+            connections.forEach {
+                Nearby.getConnectionsClient(this@MainActivity).sendPayload(it, bytesPayload)
+            }
+            
+            val message = Message().apply {
+                sender = "${(0..9999).random()}"
+                content = written
+            }
+
+            messages.add(message)
+            (messageList.adapter as MessageAdapter).notifyDataSetChanged()
+
+            messageBox.text.clear()
+        }
 
         startAdvertising()
         startDiscovery()
@@ -73,10 +109,7 @@ class MainActivity : AppCompatActivity() {
             override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
                 when (result.status.statusCode) {
                     ConnectionsStatusCodes.STATUS_OK -> {
-                        var resulter = result
-                        //val bytesPayload = Payload.fromBytes(byteArrayOf(0xa, 0xb, 0xc, 0xd))
-                        val bytesPayload = Payload.fromBytes("Salut à tous".toByteArray())
-                        Nearby.getConnectionsClient(this@MainActivity).sendPayload(endpointId, bytesPayload)
+                        connections.add(endpointId)
                     }
                     ConnectionsStatusCodes.STATUS_CONNECTION_REJECTED -> {}
                     ConnectionsStatusCodes.STATUS_ERROR -> {}
@@ -95,8 +128,17 @@ class MainActivity : AppCompatActivity() {
             override fun onPayloadReceived(p0: String, p1: Payload) {
                 if (p1.type == Payload.Type.BYTES) {
                     val receivedBytes: ByteArray? = p1.asBytes()
-                    val receivedBytesString = receivedBytes?.let { String(it) }
-                    println(receivedBytesString)
+
+                    receivedBytes?.let {
+                        val message = Message().apply {
+                            sender = "${(0..9999).random()}"
+                            content = String(it)
+                        }
+
+                        messages.add(message)
+                        (messageList.adapter as MessageAdapter).notifyDataSetChanged()
+                    }
+
                 }
             }
 
