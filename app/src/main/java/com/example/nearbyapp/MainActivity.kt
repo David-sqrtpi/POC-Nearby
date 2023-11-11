@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
@@ -20,13 +21,18 @@ import com.google.android.gms.nearby.connection.PayloadCallback
 import com.google.android.gms.nearby.connection.PayloadTransferUpdate
 import com.google.android.gms.nearby.connection.Strategy
 import models.Message
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.ObjectInputStream
+import java.io.ObjectOutputStream
+import java.util.UUID
 
 
 private val STRATEGY = Strategy.P2P_CLUSTER
 
 class MainActivity : AppCompatActivity() {
     private val SERVICE_ID = "com.example.nearbyapp.id"
-    private val LOCAL_USERNAME = "final32david"
+    private val LOCAL_USERNAME = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
 
     private lateinit var messageList: ListView
     private val messages = mutableListOf<Message>()
@@ -41,23 +47,31 @@ class MainActivity : AppCompatActivity() {
 
         messageBox = findViewById(R.id.messageBox)
 
+        findViewById<TextView>(R.id.name).text = "Yo: ${LOCAL_USERNAME}"
+
         findViewById<Button>(R.id.sendButton).setOnClickListener {
             val written = messageBox.text
                 .toString()
 
-            val bytesPayload = Payload.fromBytes(written.toByteArray())
+            val message = Message().apply {
+                sender = LOCAL_USERNAME.toString()
+                content = written
+            }
+
+            val byteArrayOutputStream = ByteArrayOutputStream()
+            val objectOutputStream = ObjectOutputStream(byteArrayOutputStream)
+            objectOutputStream.writeObject(message)
+            val byteArray = byteArrayOutputStream.toByteArray()
+
+            val bytesPayload = Payload.fromBytes(byteArray)
 
             connections.forEach {
                 Nearby.getConnectionsClient(this@MainActivity).sendPayload(it, bytesPayload)
             }
-            
-            val message = Message().apply {
-                sender = "${(0..9999).random()}"
-                content = written
-            }
 
             messages.add(message)
             (messageList.adapter as MessageAdapter).notifyDataSetChanged()
+            messageList.smoothScrollToPosition(messages.size - 1)
 
             messageBox.text.clear()
         }
@@ -89,7 +103,7 @@ class MainActivity : AppCompatActivity() {
             override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
                 // An endpoint was found. We request a connection to it.
                 Nearby.getConnectionsClient(this@MainActivity)
-                    .requestConnection(LOCAL_USERNAME, endpointId, connectionLifecycleCallback)
+                    .requestConnection(LOCAL_USERNAME.toString(), endpointId, connectionLifecycleCallback)
                     .addOnSuccessListener { }
                     .addOnFailureListener { }
             }
@@ -130,15 +144,14 @@ class MainActivity : AppCompatActivity() {
                     val receivedBytes: ByteArray? = p1.asBytes()
 
                     receivedBytes?.let {
-                        val message = Message().apply {
-                            sender = "${(0..9999).random()}"
-                            content = String(it)
-                        }
+                        val byteArrayInputStream = ByteArrayInputStream(it)
+                        val objectInputStream = ObjectInputStream(byteArrayInputStream)
+                        val message = objectInputStream.readObject() as Message
 
                         messages.add(message)
                         (messageList.adapter as MessageAdapter).notifyDataSetChanged()
+                        messageList.smoothScrollToPosition(messages.size - 1)
                     }
-
                 }
             }
 
